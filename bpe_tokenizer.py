@@ -1,31 +1,55 @@
 
+# modification from yakhyo
+# https://github.com/Nkluge-correa/TeenyTinyLlama
+
 import json
 import argparse
 
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
 from tokenizers import SentencePieceBPETokenizer
 from transformers import LlamaTokenizerFast, AutoTokenizer
 
 
-def main(args):
-    # Load the dataset from the huggingface Hub and prepare it for training
-    if args.dataset_name is not None:
-        dataset = load_dataset(
-            args.dataset_name,
-            split=args.dataset_split,
-            token=args.hub_token if args.hub_token else None,
-        )
-    else:
-        raise ValueError("No dataset name provided or dataset is already tokenized")
+from typing import List
 
-    # Remove non text columns
-    dataset = dataset.remove_columns([col for col in dataset.column_names if col != "text"])
+hf_datasets = ["yakhyo/uz-wiki", "yakhyo/uz-news"]
+
+
+def prepare_datasets(datasets_list: List[str]):
+    all_data = []
+    for dataset_name in datasets_list:
+        try:
+            data = load_dataset(
+                dataset_name,
+                token=args.hub_token if args.hub_token else None,
+            )
+            for split in ["train", "test", "validation"]:
+                try:
+                    all_data.append(data[split])
+                except KeyError:
+                    pass
+        except:
+            print(f"dataset: `{dataset_name}` not found, skipping...")
+
+    concat_data = []
+    for data in all_data:
+        data = data.remove_columns([col for col in data.column_names if col != "text"])
+        concat_data.append(data)
+
+    return concatenate_datasets(concat_data)
+
+
+def main(args):
+
+    dataset = prepare_datasets(hf_datasets)
 
     # select num_samples from the dataset
-    dataset = dataset.shuffle(seed=42).select(range(args.num_samples))
+    dataset = dataset.shuffle(seed=42).select(range(len(dataset)))
 
     # Create a SentencePieceBPETokenizer
-    tokenizer = SentencePieceBPETokenizer()
+    tokenizer = SentencePieceBPETokenizer(
+        replacement="Ġ"
+    )
 
     # Train the SentencePieceBPETokenizer on the dataset
     tokenizer.train_from_iterator(
@@ -86,18 +110,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Llama Tokenizer using SentencePieceBPE")
-    parser.add_argument(
-        "--dataset_name",
-        type=str,
-        default=None,
-        help="The name of the dataset to be tokenized"
-    )
-    parser.add_argument(
-        "--dataset_split",
-        type=str,
-        default=None,
-        help="The split of the dataset to be tokenized"
-    )
+
     parser.add_argument(
         "--hub_token",
         type=str,
@@ -110,12 +123,7 @@ if __name__ == "__main__":
         default=None,
         help="The name of the reference tokenizer to use"
     )
-    parser.add_argument(
-        "--num_samples",
-        type=int,
-        default=None,
-        help="Number of samples to use from the dataset"
-    )
+
     parser.add_argument(
         "--vocab_size",
         type=int,
@@ -126,4 +134,4 @@ if __name__ == "__main__":
     main(args)
 
 # How to run:
-# python train_sentencepiece.py --dataset_name "yakhyo/uzbek-wiki" --dataset_split "train" --hub_token "hf_..." --reference_tokenizer "meta-llama/Llama-2-7b-hf" --num_samples 2000000 --vocab_size 32000
+# python bpe_tokenizer.py  --hub_token "hf.." --reference_tokenizer "meta-llama/Llama-3.2-3b" --vocab_size 32000
