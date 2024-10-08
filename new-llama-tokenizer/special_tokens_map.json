@@ -1,6 +1,16 @@
 {
-  "bos_token": "<s>",
-  "eos_token": "</s>",
-  "pad_token": "<pad>",
-  "unk_token": "<unk>"
+  "bos_token": {
+    "content": "<|begin_of_text|>",
+    "lstrip": false,
+    "normalized": false,
+    "rstrip": false,
+    "single_word": false
+  },
+  "eos_token": {
+    "content": "<|end_of_text|>",
+    "lstrip": false,
+    "normalized": false,
+    "rstrip": false,
+    "single_word": false
+  }
 }

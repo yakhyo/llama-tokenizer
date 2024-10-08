@@ -7,7 +7,7 @@ import argparse
 
 from datasets import load_dataset, concatenate_datasets
 from tokenizers import SentencePieceBPETokenizer
-from transformers import LlamaTokenizerFast, AutoTokenizer, AddedToken
+from transformers import LlamaTokenizerFast, AutoTokenizer, AddedToken, PreTrainedTokenizerFast
 
 from tqdm import tqdm
 from typing import List
@@ -16,12 +16,12 @@ hf_datasets = ["yakhyo/uz-wiki", "yakhyo/uz-news", "agentlans/high-quality-engli
 hf_datasets = ["yakhyo/uz-wiki"]
 
 
-
 def normalize_text(text: str) -> str:
     """
     Normalize Uzbek characters, replacing variations of o‘, o', o`, and ’ (curved apostrophe).
     """
     return text.replace("‘", "'").replace("`", "'").replace("’", "'").replace("()", "")
+
 
 def prepare_datasets(datasets_list: List[str]):
     all_data = []
@@ -54,19 +54,13 @@ def main(args):
     dataset = dataset.shuffle(seed=42).select(range(50000))
 
     # Create a SentencePieceBPETokenizer
-    tokenizer = SentencePieceBPETokenizer(
-        replacement="Ġ"
-    )
+    tokenizer = SentencePieceBPETokenizer(replacement="Ġ")
 
     # Train the SentencePieceBPETokenizer on the dataset
     tokenizer.train_from_iterator(
         iterator=dataset['text'],
         vocab_size=args.vocab_size,
-        show_progress=True,
-        # special_tokens = [
-        #     "<|begin_of_text|>",
-        #     "<|end_of_text|>"
-        # ]
+        show_progress=True
     )
 
     # Save the tokenizer
@@ -78,7 +72,9 @@ def main(args):
         reference_tokenizer.save_pretrained("reference-tokenizer")
     else:
         raise ValueError(
-            "No tokenizer name provided or no hub token provided. Try using --reference_tokenizer 'meta-llama/Llama-2-7b-hf'")
+            "No tokenizer name provided or no hub token provided. \
+            Try using --reference_tokenizer 'meta-llama/Llama-3.2-3b'"
+        )
 
     # Read and dump the json file for the new tokenizer and the reference tokenizer
     with open("new-llama-tokenizer.json", "r") as f:
@@ -100,14 +96,15 @@ def main(args):
         json.dump(new_llama_tokenizer_json, f, indent=2, ensure_ascii=False)
 
     # Load the new tokenizer as a LlamaTokenizerFast
-    new_llama_tokenizer = LlamaTokenizerFast(
+    new_llama_tokenizer = PreTrainedTokenizerFast(
         tokenizer_file="new-llama-tokenizer.json",
         padding_side="right",
-        bos_token="<|begin_of_text|>",
-        eos_token="<|end_of_text|>",
+        model_max_length=131072,
+        bos_token=AddedToken("<|begin_of_text|>", rstrip=False, lstrip=False, single_word=False, normalized=False, special=True),
+        eos_token=AddedToken("<|end_of_text|>", rstrip=False, lstrip=False, single_word=False, normalized=False, special=True)
     )
     # Define the special tokens you want to add
-    special_tokens = [
+    added_tokens = [
         "<|begin_of_text|>",
         "<|end_of_text|>",
         "<|reserved_special_token_0|>",
@@ -123,13 +120,13 @@ def main(args):
     ]
 
     # Create AddedToken objects for each special token with properties similar to your expected output
-    added_special_tokens = [
+    added_tokens_object = [
         AddedToken(token, rstrip=False, lstrip=False, single_word=False, normalized=False, special=True)
-        for token in special_tokens
+        for token in added_tokens
     ]
 
-    # Add these special tokens to the tokenizer
-    new_llama_tokenizer.add_special_tokens({'additional_special_tokens': added_special_tokens})
+    # Add these reserved tokens to the tokenizer
+    new_llama_tokenizer.add_tokens(added_tokens_object)
 
     # Save the new tokenizer
     new_llama_tokenizer.save_pretrained("new-llama-tokenizer")
