@@ -1,7 +1,7 @@
 import torch
 from datasets import load_dataset, concatenate_datasets
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, Trainer
-
+from tqdm import tqdm
 from typing import List
 # Check if a GPU is available and use it; otherwise, use CPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -18,6 +18,12 @@ model = AutoModelForCausalLM.from_pretrained(model_name)
 
 #-------------------------------------------------------------------------------
 
+def normalize_text(text: str) -> str:
+    """
+    Normalize Uzbek characters, replacing variations of ‘, ', `, and ’ (curved apostrophe).
+    """
+    return text.replace("‘", "'").replace("`", "'").replace("’", "'").replace("()", "")
+
 def prepare_datasets(datasets_list: List[str]):
     all_data = []
     for dataset_name in datasets_list:
@@ -32,7 +38,8 @@ def prepare_datasets(datasets_list: List[str]):
             print(f"dataset: `{dataset_name}` not found, skipping...")
 
     concat_data = []
-    for data in all_data:
+    for data in tqdm(all_data):
+        data = data.map(lambda example: {"text": normalize_text(example["text"])})
         data = data.remove_columns([col for col in data.column_names if col != "text"])
         concat_data.append(data)
 
@@ -41,7 +48,8 @@ def prepare_datasets(datasets_list: List[str]):
 #-------------------------------------------------------------------------------
 
 # Load your dataset (replace with your dataset path)
-hf_datasets = ["yakhyo/uz-wiki", "yakhyo/uz-news"]
+hf_datasets = ["yakhyo/uz-wiki", "yakhyo/uz-news", "agentlans/high-quality-english-sentences"]
+
 
 dataset = prepare_datasets(hf_datasets)
 split_dataset = dataset.train_test_split(test_size=0.1)
@@ -67,12 +75,13 @@ training_args = TrainingArguments(
     weight_decay=0.01,
     per_device_train_batch_size=2,  # Adjusted for smaller memory
     per_device_eval_batch_size=2,   # Adjusted for smaller memory
-    num_train_epochs=3,
+    num_train_epochs=1,
     save_steps=10_000,
     save_total_limit=2,
     push_to_hub=False,  # Disable this if not using Hugging Face Hub
     fp16=torch.cuda.is_available(),  # Enable mixed precision if using GPU
     gradient_accumulation_steps=8,  # Use gradient accumulation for smaller batches
+    report_to="wandb"
 )
 
 
